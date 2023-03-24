@@ -6,15 +6,13 @@ import (
 	"github.com/benbjohnson/immutable"
 	"github.com/crosstyan/sh-over-ws/message"
 	"github.com/google/uuid"
+	"golang.org/x/exp/slices"
 	"nhooyr.io/websocket"
 )
 
 type Client interface {
 	Uuid() uuid.UUID
 	Conn() *websocket.Conn
-	// maybe this field is not necessary
-	// We have reflection and switch case
-	Type() message.ClientType
 }
 
 type Hub struct {
@@ -48,9 +46,51 @@ func (h *Hub) NewVisitor(conn *websocket.Conn) uuid.UUID {
 }
 
 func (h *Hub) Remove(uuid uuid.UUID) {
-	h.actuator = h.actuator.Delete(uuid)
-	h.controller = h.controller.Delete(uuid)
-	h.visitor = h.visitor.Delete(uuid)
+	cl, ok := h.Get(uuid)
+	if ok {
+		switch c := cl.(type) {
+		case Actuator:
+			for _, cid := range c.Subscribers() {
+				if controller, ok := h.controller.Get(cid); ok {
+					controller.Unsubscribe(c.Uuid())
+				}
+			}
+			h.actuator = h.actuator.Delete(uuid)
+		case Controller:
+			for _, aid := range c.Subscriptions() {
+				if actuator, ok := h.actuator.Get(aid); ok {
+					actuator.RemoveSubscriber(c.Uuid())
+				}
+			}
+			h.controller = h.controller.Delete(uuid)
+		case Visitor:
+			h.visitor = h.visitor.Delete(uuid)
+		default:
+			// do nothing
+		}
+	}
+}
+
+func (h *Hub) Subscribe(req *message.ControlRequest) error {
+	cid, err := uuid.FromBytes(req.ControllerId)
+	if err != nil {
+		return err
+	}
+	aid, err := uuid.FromBytes(req.ActuatorId)
+	if err != nil {
+		return err
+	}
+	actuator, ok := h.actuator.Get(aid)
+	if !ok {
+		return errors.New("actuator not found")
+	}
+	controller, ok := h.controller.Get(cid)
+	if !ok {
+		return errors.New("controller not found")
+	}
+	actuator.AddSubscriber(cid)
+	controller.Subscribe(aid)
+	return nil
 }
 
 func (h *Hub) FromVisitor(id uuid.UUID, handshake *message.Handshake) (uuid.UUID, error) {
@@ -110,26 +150,45 @@ func NewHub() Hub {
 }
 
 type Controller struct {
-	uuid uuid.UUID
-	conn *websocket.Conn
+	uuid        uuid.UUID
+	conn        *websocket.Conn
+	subscribing []uuid.UUID
 }
 
 func (c Controller) Uuid() uuid.UUID {
 	return c.uuid
 }
 
-func (c Controller) Type() message.ClientType {
-	return message.ClientType_CONTROLLER
-}
-
 func (c Controller) Conn() *websocket.Conn {
 	return c.conn
 }
 
+func (c Controller) Subscribe(id uuid.UUID) {
+	c.subscribing = append(c.subscribing, id)
+}
+
+func (c Controller) Unsubscribe(id uuid.UUID) {
+	// a naive implementation
+	for i, v := range c.subscribing {
+		// I using `ID()` to hash anyway
+		// NOTE: bounds check?
+		// implement `DeleteIf` and `DeleteIfOnce`
+		if v.ID() == id.ID() {
+			c.subscribing = slices.Delete(c.subscribing, i, i)
+			break
+		}
+	}
+}
+
+func (c Controller) Subscriptions() []uuid.UUID {
+	return c.subscribing
+}
+
 type Actuator struct {
-	name string
-	uuid uuid.UUID
-	conn *websocket.Conn
+	name        string
+	uuid        uuid.UUID
+	conn        *websocket.Conn
+	subscribers []uuid.UUID
 }
 
 func (a Actuator) Name() string {
@@ -140,10 +199,25 @@ func (a Actuator) Uuid() uuid.UUID {
 	return a.uuid
 }
 
-func (a Actuator) Type() message.ClientType {
-	return message.ClientType_ACTUATOR
-}
-
 func (a Actuator) Conn() *websocket.Conn {
 	return a.conn
+}
+
+// same as `Controller.Subscribe`
+func (a Actuator) AddSubscriber(id uuid.UUID) {
+	a.subscribers = append(a.subscribers, id)
+}
+
+// same as `Controller.Unsubscribe`
+func (a Actuator) RemoveSubscriber(id uuid.UUID) {
+	for i, v := range a.subscribers {
+		if v.ID() == id.ID() {
+			a.subscribers = slices.Delete(a.subscribers, i, i)
+			break
+		}
+	}
+}
+
+func (a Actuator) Subscribers() []uuid.UUID {
+	return a.subscribers
 }

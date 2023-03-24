@@ -68,7 +68,7 @@ message StdPayload {
 message Payload {
   oneof payload {
     Handshake handshake = 1;
-    ActuatorControl control = 2;
+    ActuatorControl controlActuator = 2;
     ControlRequest controlRequest = 3;
     StdPayload stdPayload = 4;
     Error error = 5;

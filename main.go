@@ -66,6 +66,7 @@ func main() {
 						sugar.Errorw("FromVisitor", "error", err, "from", c.Request.RemoteAddr)
 					}
 					id = uid
+				case *message.Payload_ControlRequest:
 				default:
 					sugar.Warnw("UnknownMessageType", "type", reflect.TypeOf(p), "from", c.Request.RemoteAddr)
 				}

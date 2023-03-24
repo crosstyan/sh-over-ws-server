@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"github.com/crosstyan/sh-over-ws/message"
 	"github.com/google/uuid"
 	"nhooyr.io/websocket"
 )
@@ -17,10 +16,6 @@ func (v Visitor) Uuid() uuid.UUID {
 
 func (v Visitor) Conn() *websocket.Conn {
 	return v.conn
-}
-
-func (v Visitor) Type() message.ClientType {
-	return message.ClientType_VISITOR
 }
 
 // the original visitor should be removed from the hub
