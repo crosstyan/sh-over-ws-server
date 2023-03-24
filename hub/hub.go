@@ -2,6 +2,7 @@ package hub
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/benbjohnson/immutable"
 	"github.com/crosstyan/sh-over-ws/message"
@@ -9,6 +10,33 @@ import (
 	"github.com/google/uuid"
 	"nhooyr.io/websocket"
 )
+
+const (
+	Existed = iota
+)
+
+type AppError interface {
+	error
+	Code() int
+	Msg() string
+}
+
+type hubError struct {
+	code int
+	msg  string
+}
+
+func (e hubError) Error() string {
+	return fmt.Sprintf("hub error: %s, code: %d", e.msg, e.code)
+}
+
+func (e hubError) Code() int {
+	return e.code
+}
+
+func (e hubError) Msg() string {
+	return e.msg
+}
 
 type Client interface {
 	Uuid() uuid.UUID
@@ -115,11 +143,15 @@ func (h *Hub) toActuator(tempUuid uuid.UUID, handshake *message.ActuatorHandshak
 	if err != nil {
 		return empty, err
 	}
-	name := handshake.Name
 	v, ok := h.visitor.Get(tempUuid)
 	if !ok {
 		return empty, errors.New("not found")
 	}
+	_, ok = h.Get(realUuid)
+	if ok {
+		return empty, errors.New("uuid already exists")
+	}
+	name := handshake.Name
 	h.actuator = h.actuator.Set(realUuid, v.ToActuator(realUuid, name))
 	h.visitor = h.visitor.Delete(tempUuid)
 	return realUuid, nil
@@ -134,6 +166,10 @@ func (h *Hub) toController(tempUuid uuid.UUID, handshake *message.ControllerHand
 	v, ok := h.visitor.Get(tempUuid)
 	if !ok {
 		return empty, errors.New("not found")
+	}
+	_, ok = h.Get(realUuid)
+	if ok {
+		return empty, errors.New("uuid already exists")
 	}
 	h.controller = h.controller.Set(realUuid, v.ToController(realUuid))
 	h.visitor = h.visitor.Delete(tempUuid)

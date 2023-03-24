@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/BooleanCat/go-functional v0.8.0 // indirect
 	github.com/bytedance/sonic v1.8.6 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
