@@ -1,7 +1,7 @@
 package hub
 
 import (
-	"bytes"
+	"errors"
 
 	"github.com/benbjohnson/immutable"
 	"github.com/google/uuid"
@@ -16,8 +16,29 @@ type Client interface {
 type Hub struct {
 	Actuator   *immutable.Map[uuid.UUID, Actuator]
 	Controller *immutable.Map[uuid.UUID, Controller]
-	// would remove this in the future
+	// a temporary connection. Would be converted to `Actuator` or `Controller`.
 	Visitor *immutable.Map[uuid.UUID, Visitor]
+}
+
+// TODO: too much duplicate code
+func (h *Hub) ToActuator(tempUuid uuid.UUID, realUuid uuid.UUID, name string) error {
+	v, ok := h.Visitor.Get(tempUuid)
+	if !ok {
+		return errors.New("not found")
+	}
+	h.Actuator = h.Actuator.Set(realUuid, v.ToActuator(realUuid, name))
+	h.Visitor = h.Visitor.Delete(tempUuid)
+	return nil
+}
+
+func (h *Hub) ToController(tempUuid uuid.UUID, realUuid uuid.UUID) error {
+	v, ok := h.Visitor.Get(tempUuid)
+	if !ok {
+		return errors.New("not found")
+	}
+	h.Controller = h.Controller.Set(realUuid, v.ToController(realUuid))
+	h.Visitor = h.Visitor.Delete(tempUuid)
+	return nil
 }
 
 func NewHub() Hub {
@@ -27,38 +48,6 @@ func NewHub() Hub {
 		Controller: immutable.NewMap[uuid.UUID, Controller](&hasher),
 		Visitor:    immutable.NewMap[uuid.UUID, Visitor](&hasher),
 	}
-}
-
-type Visitor struct {
-	uuid uuid.UUID
-	conn *websocket.Conn
-}
-
-func (v *Visitor) Uuid() uuid.UUID {
-	return v.uuid
-}
-
-func (v *Visitor) Conn() *websocket.Conn {
-	return v.conn
-}
-
-func NewVisitor(conn *websocket.Conn) Visitor {
-	return Visitor{
-		uuid: uuid.New(),
-		conn: conn,
-	}
-}
-
-type UuidHasher struct{}
-
-// A UUID is a 128 bit (16 byte) Universal Unique IDentifier as defined in RFC
-// 4122, which is way bigger than uint32.
-func (h *UuidHasher) Hash(key uuid.UUID) uint32 {
-	return key.ID()
-}
-
-func (h *UuidHasher) Equal(a, b uuid.UUID) bool {
-	return bytes.Equal(a[:], b[:])
 }
 
 type Controller struct {

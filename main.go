@@ -9,9 +9,6 @@ import (
 	"nhooyr.io/websocket"
 )
 
-// https://pkg.go.dev/golang.org/x/net/websocket
-// official recommendation is
-// https://pkg.go.dev/nhooyr.io/websocket
 func main() {
 	logger, _ := zap.NewProduction()
 	sugar := logger.Sugar()
@@ -22,8 +19,6 @@ func main() {
 		if err != nil {
 			sugar.Errorw("WebsocketAccept", "error", err, "from", c.Request.RemoteAddr)
 		}
-		// no idea what go context is
-		// https://draveness.me/golang/docs/part3-runtime/ch06-concurrency/golang-context/
 		v := hub.NewVisitor(conn)
 		h.Visitor = h.Visitor.Set(v.Uuid(), v)
 		go func(done <-chan struct{}) {
@@ -40,7 +35,6 @@ func main() {
 			buffer := make([]byte, 1024, 10240)
 			switch t {
 			case websocket.MessageText:
-				// Go declaration syntax says nothing about stack or heap.
 				l, err := reader.Read(buffer)
 				if err != nil {
 					sugar.Errorw("ReaderRead", "error", err, "from", c.Request.RemoteAddr)
