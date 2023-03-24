@@ -1,10 +1,12 @@
 package hub
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/benbjohnson/immutable"
+	"github.com/crosstyan/sh-over-ws/log"
 	"github.com/crosstyan/sh-over-ws/message"
 	"github.com/crosstyan/sh-over-ws/utils"
 	"github.com/google/uuid"
@@ -50,6 +52,7 @@ type Hub struct {
 	visitor *immutable.Map[uuid.UUID, Visitor]
 }
 
+// https://stackoverflow.com/questions/27775376/value-receiver-vs-pointer-receiver
 // ugly... just
 func (h *Hub) Get(uuid uuid.UUID) (Client, bool) {
 	if v, ok := h.visitor.Get(uuid); ok {
@@ -93,8 +96,6 @@ func (h *Hub) Remove(uuid uuid.UUID) {
 			h.controller = h.controller.Delete(uuid)
 		case Visitor:
 			h.visitor = h.visitor.Delete(uuid)
-		default:
-			// do nothing
 		}
 	}
 }
@@ -176,6 +177,63 @@ func (h *Hub) toController(tempUuid uuid.UUID, handshake *message.ControllerHand
 	return realUuid, nil
 }
 
+func (h *Hub) HandleStdPayload(ctx context.Context, payload *message.StdPayload) error {
+	broadcast := func(ctx context.Context, a *Actuator, b []byte) {
+		for _, s := range a.subscribers {
+			sub, ok := h.Get(s)
+			if ok {
+				go func() {
+					err := sub.Conn().Write(ctx, websocket.MessageBinary, b)
+					if err != nil {
+						log.Sugar().Errorw("WriteError", "type", "STDOUT", "error", err)
+					}
+				}()
+			}
+		}
+	}
+
+	aid, err := uuid.FromBytes(payload.Uuid)
+	if err != nil {
+		return err
+	}
+	actuator, ok := h.actuator.Get(aid)
+	if !ok {
+		return errors.New("actuator not found")
+	}
+
+	switch p := payload.Payload.(type) {
+	case *message.StdPayload_Stdout:
+		broadcast(ctx, &actuator, p.Stdout.Data)
+		return nil
+	case *message.StdPayload_Stdin:
+		err = actuator.Conn().Write(ctx, websocket.MessageBinary, p.Stdin.Data)
+		return err
+	}
+	return nil
+}
+
+func (h *Hub) RequestSub(msg *message.ControlRequest) error {
+	cid, err := uuid.FromBytes(msg.ControllerId)
+	if err != nil {
+		return err
+	}
+	aid, err := uuid.FromBytes(msg.ActuatorId)
+	if err != nil {
+		return err
+	}
+	actuator, ok := h.actuator.Get(aid)
+	if !ok {
+		return errors.New("No actuator")
+	}
+	controller, ok := h.controller.Get(cid)
+	if !ok {
+		return errors.New("No controller")
+	}
+	actuator.AddSubscriber(cid)
+	controller.Subscribe(aid)
+	return nil
+}
+
 func NewHub() Hub {
 	hasher := utils.UuidHasher{}
 	return Hub{
@@ -199,11 +257,11 @@ func (c Controller) Conn() *websocket.Conn {
 	return c.conn
 }
 
-func (c Controller) Subscribe(id uuid.UUID) {
+func (c *Controller) Subscribe(id uuid.UUID) {
 	c.subscribing = append(c.subscribing, id)
 }
 
-func (c Controller) Unsubscribe(id uuid.UUID) {
+func (c *Controller) Unsubscribe(id uuid.UUID) {
 	utils.DeleteIfOnce(
 		c.subscribing,
 		id,
@@ -212,7 +270,7 @@ func (c Controller) Unsubscribe(id uuid.UUID) {
 		})
 }
 
-func (c Controller) Subscriptions() []uuid.UUID {
+func (c *Controller) Subscriptions() []uuid.UUID {
 	return c.subscribing
 }
 
@@ -236,12 +294,12 @@ func (a Actuator) Conn() *websocket.Conn {
 }
 
 // same as `Controller.Subscribe`
-func (a Actuator) AddSubscriber(id uuid.UUID) {
+func (a *Actuator) AddSubscriber(id uuid.UUID) {
 	a.subscribers = append(a.subscribers, id)
 }
 
 // same as `Controller.Unsubscribe`
-func (a Actuator) RemoveSubscriber(id uuid.UUID) {
+func (a *Actuator) RemoveSubscriber(id uuid.UUID) {
 	utils.DeleteIfOnce(
 		a.subscribers,
 		id,
@@ -250,6 +308,6 @@ func (a Actuator) RemoveSubscriber(id uuid.UUID) {
 		})
 }
 
-func (a Actuator) Subscribers() []uuid.UUID {
+func (a *Actuator) Subscribers() []uuid.UUID {
 	return a.subscribers
 }

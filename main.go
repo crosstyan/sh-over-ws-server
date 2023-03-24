@@ -67,8 +67,17 @@ func main() {
 					}
 					id = uid
 				case *message.Payload_ControlRequest:
+					err = h.RequestSub(p.ControlRequest)
+					if err != nil {
+						sugar.Errorw("RequestSub", "error", err, "from", c.Request.RemoteAddr)
+					}
+				case *message.Payload_StdPayload:
+					err = h.HandleStdPayload(c, p.StdPayload)
+					if err != nil {
+						sugar.Errorw("HandleStdPayload", "error", err, "from", c.Request.RemoteAddr)
+					}
 				default:
-					sugar.Warnw("UnknownMessageType", "type", reflect.TypeOf(p), "from", c.Request.RemoteAddr)
+					sugar.Warnw("InvalidPayloadType", "type", reflect.TypeOf(p), "from", c.Request.RemoteAddr)
 				}
 			}
 		}
