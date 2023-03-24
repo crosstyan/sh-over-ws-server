@@ -1,7 +1,6 @@
 package main
 
 import (
-	"reflect"
 	"strings"
 	"time"
 
@@ -62,22 +61,23 @@ func main() {
 				switch p := payload.Payload.(type) {
 				case *message.ClientMsg_Handshake:
 					uid, err := h.FromVisitor(id, p.Handshake)
+					sugar.Infow("FromVisitor", "uid", uid, "from", c.Request.RemoteAddr)
 					if err != nil {
 						sugar.Errorw("FromVisitor", "error", err, "from", c.Request.RemoteAddr)
 					}
 					id = uid
 				case *message.ClientMsg_ControlRequest:
 					err = h.RequestSub(p.ControlRequest)
+					sugar.Infow("RequestSub", "from", c.Request.RemoteAddr)
 					if err != nil {
 						sugar.Errorw("RequestSub", "error", err, "from", c.Request.RemoteAddr)
 					}
 				case *message.ClientMsg_StdPayload:
 					err = h.HandleStdPayload(c, p.StdPayload)
+					sugar.Infow("HandleStdPayload", "from", c.Request.RemoteAddr)
 					if err != nil {
 						sugar.Errorw("HandleStdPayload", "error", err, "from", c.Request.RemoteAddr)
 					}
-				default:
-					sugar.Warnw("InvalidPayloadType", "type", reflect.TypeOf(p), "from", c.Request.RemoteAddr)
 				}
 			}
 		}
