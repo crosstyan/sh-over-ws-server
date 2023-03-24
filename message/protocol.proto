@@ -1,0 +1,76 @@
+syntax = "proto3";
+package message;
+// option go_package = "github.com/crosstyan/sh-over-ws/message";
+option go_package = "github.com/crosstyan/sh-over-ws/message;message";
+
+// https://stackoverflow.com/questions/69185020/oneof-kind-vs-enum-in-protobuf
+message Error {
+  uint32 code = 1;
+  string reason = 2;
+}
+
+message ActuatorHandshake {
+  bytes uuid = 1;
+  string name = 2;
+}
+
+message ControllerHandshake {
+  bytes uuid = 1;
+}
+
+message Handshake {
+  oneof handshake {
+    ActuatorHandshake actuator = 2;
+    ControllerHandshake controller = 3;
+  }
+}
+
+enum ClientType {
+  ACTUATOR = 0;
+  CONTROLLER = 1;
+  VISITOR = 2;
+  UNKNOWN = 3;
+}
+
+enum ControlState {
+  BIND = 0;
+  // keep the connection alive but don't send any data
+  UNBIND = 1;
+}
+
+message ActuatorControl {
+  bytes uuid = 1;
+  ControlState state = 2;
+}
+
+// send by controller to bind actuator's STDOUT to controller
+message ControlRequest {
+  bytes controllerId = 1;
+  bytes actuatorId = 2;
+}
+
+// should always be send by actuator
+message StdOut { bytes data = 1; }
+
+// should always be send by controller
+message StdIn { bytes data = 1; }
+
+message StdPayload {
+  // actuator's uuid
+  // don't need to know who's the controller
+  bytes uuid = 1;
+  oneof payload {
+    StdOut stdout = 2;
+    StdIn stdin = 3;
+  }
+}
+
+message Payload {
+  oneof payload {
+    Handshake handshake = 1;
+    ActuatorControl control = 2;
+    ControlRequest controlRequest = 3;
+    StdPayload stdPayload = 4;
+    Error error = 5;
+  }
+}

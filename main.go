@@ -1,29 +1,36 @@
 package main
 
 import (
+	"reflect"
 	"strings"
+	"time"
 
 	"github.com/crosstyan/sh-over-ws/hub"
+	"github.com/crosstyan/sh-over-ws/log"
+	"github.com/crosstyan/sh-over-ws/message"
+	ginZap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 )
 
 func main() {
-	logger, _ := zap.NewProduction()
-	sugar := logger.Sugar()
+	sugar := log.Sugar()
+	logger := log.Logger()
 	h := hub.NewHub()
-	r := gin.Default()
+	r := gin.New()
+	r.Use(ginZap.Ginzap(logger, time.RFC3339, true))
+	r.Use(ginZap.RecoveryWithZap(logger, true))
 	r.GET("/ws", func(c *gin.Context) {
 		conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{InsecureSkipVerify: true})
 		if err != nil {
-			sugar.Errorw("WebsocketAccept", "error", err, "from", c.Request.RemoteAddr)
+			sugar.Warnw("WebsocketAccept", "error", err, "from", c.Request.RemoteAddr)
 		}
-		v := hub.NewVisitor(conn)
-		h.Visitor = h.Visitor.Set(v.Uuid(), v)
+		// NOTE: mutable
+		id := h.NewVisitor(conn)
 		go func(done <-chan struct{}) {
 			<-done
-			h.Visitor = h.Visitor.Delete(v.Uuid())
+			h.Remove(id)
 			sugar.Infow("VisitorDeleted", "from", c.Request.RemoteAddr)
 		}(c.Request.Context().Done())
 		for {
@@ -47,7 +54,21 @@ func main() {
 					_ = conn.Write(c, websocket.MessageText, []byte(m))
 				}
 			case websocket.MessageBinary:
-				// do nothing
+				payload := &message.Payload{}
+				err := proto.Unmarshal(buffer, payload)
+				if err != nil {
+					sugar.Errorw("ProtoUnmarshal", "error", err, "from", c.Request.RemoteAddr)
+				}
+				switch p := payload.Payload.(type) {
+				case *message.Payload_Handshake:
+					uid, err := h.FromVisitor(id, p.Handshake)
+					if err != nil {
+						sugar.Errorw("FromVisitor", "error", err, "from", c.Request.RemoteAddr)
+					}
+					id = uid
+				default:
+					sugar.Warnw("UnknownMessageType", "type", reflect.TypeOf(p), "from", c.Request.RemoteAddr)
+				}
 			}
 		}
 	})
