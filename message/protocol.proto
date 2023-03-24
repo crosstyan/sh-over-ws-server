@@ -65,14 +65,20 @@ message StdPayload {
   }
 }
 
-message Payload {
+// MessageFromClient (either)
+message ClientMsg {
   oneof payload {
     Handshake handshake = 1;
-    // send by server and should be removed
-    ActuatorControl controlActuator = 2;
-    ControlRequest controlRequest = 3;
-    StdPayload stdPayload = 4;
-    // send by server
-    Error error = 5;
+    ControlRequest controlRequest = 2;
+    StdPayload stdPayload = 3;
+  }
+}
+
+// MessageFromServer
+message ServerMsg {
+  oneof payload {
+    Error error = 1;
+    ActuatorControl actuatorControl = 2;
+    StdPayload stdPayload = 3;
   }
 }

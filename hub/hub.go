@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/benbjohnson/immutable"
 	"github.com/crosstyan/sh-over-ws/log"
@@ -39,6 +40,12 @@ func (h *Hub) Get(uuid uuid.UUID) (Client, bool) {
 	return nil, false
 }
 
+// https://groups.google.com/g/golang-nuts/c/xRbzq8yzKWI
+// https://qiita.com/sonatard/items/d97279086b24e588a82d
+// context should not be stored in the struct.
+// should be passed as a parameter explicitly.
+
+// remove client from hub
 func (h *Hub) Remove(uuid uuid.UUID) {
 	cl, ok := h.Get(uuid)
 	if ok {
@@ -54,6 +61,16 @@ func (h *Hub) Remove(uuid uuid.UUID) {
 			for _, aid := range c.Subscriptions() {
 				if actuator, ok := h.actuator.Get(aid); ok {
 					actuator.RemoveSubscriber(c.Uuid())
+					if len(actuator.Subscribers()) <= 0 {
+						ctx := context.Background()
+						timeout, _ := time.ParseDuration("500ms")
+						ctx, cancel := context.WithTimeout(ctx, timeout)
+						defer cancel()
+						err := actuator.SendState(ctx, message.ControlState_UNBIND)
+						if err != nil {
+							log.Sugar().Errorw("actuator.SendUnbind", "error", err)
+						}
+					}
 				}
 			}
 			h.controller = h.controller.Delete(uuid)

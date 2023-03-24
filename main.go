@@ -31,7 +31,7 @@ func main() {
 		go func(done <-chan struct{}) {
 			<-done
 			h.Remove(id)
-			sugar.Infow("VisitorDeleted", "from", c.Request.RemoteAddr)
+			sugar.Infow("ClientLeave", "from", c.Request.RemoteAddr)
 		}(c.Request.Context().Done())
 		for {
 			t, reader, err := conn.Reader(c.Request.Context())
@@ -54,24 +54,24 @@ func main() {
 					_ = conn.Write(c, websocket.MessageText, []byte(m))
 				}
 			case websocket.MessageBinary:
-				payload := &message.Payload{}
+				payload := &message.ClientMsg{}
 				err := proto.Unmarshal(buffer, payload)
 				if err != nil {
 					sugar.Errorw("ProtoUnmarshal", "error", err, "from", c.Request.RemoteAddr)
 				}
 				switch p := payload.Payload.(type) {
-				case *message.Payload_Handshake:
+				case *message.ClientMsg_Handshake:
 					uid, err := h.FromVisitor(id, p.Handshake)
 					if err != nil {
 						sugar.Errorw("FromVisitor", "error", err, "from", c.Request.RemoteAddr)
 					}
 					id = uid
-				case *message.Payload_ControlRequest:
+				case *message.ClientMsg_ControlRequest:
 					err = h.RequestSub(p.ControlRequest)
 					if err != nil {
 						sugar.Errorw("RequestSub", "error", err, "from", c.Request.RemoteAddr)
 					}
-				case *message.Payload_StdPayload:
+				case *message.ClientMsg_StdPayload:
 					err = h.HandleStdPayload(c, p.StdPayload)
 					if err != nil {
 						sugar.Errorw("HandleStdPayload", "error", err, "from", c.Request.RemoteAddr)
