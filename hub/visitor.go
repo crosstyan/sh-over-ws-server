@@ -37,3 +37,12 @@ func (v *Visitor) ToController(uuid uuid.UUID) Controller {
 		conn: v.conn,
 	}
 }
+
+func (h *Hub) NewVisitor(conn *websocket.Conn) uuid.UUID {
+	v := Visitor{
+		uuid: uuid.New(),
+		conn: conn,
+	}
+	h.visitor = h.visitor.Set(v.Uuid(), v)
+	return v.uuid
+}

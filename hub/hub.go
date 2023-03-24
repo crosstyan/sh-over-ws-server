@@ -67,15 +67,6 @@ func (h *Hub) Get(uuid uuid.UUID) (Client, bool) {
 	return nil, false
 }
 
-func (h *Hub) NewVisitor(conn *websocket.Conn) uuid.UUID {
-	v := Visitor{
-		uuid: uuid.New(),
-		conn: conn,
-	}
-	h.visitor = h.visitor.Set(v.Uuid(), v)
-	return v.uuid
-}
-
 func (h *Hub) Remove(uuid uuid.UUID) {
 	cl, ok := h.Get(uuid)
 	if ok {
@@ -135,46 +126,6 @@ func (h *Hub) FromVisitor(id uuid.UUID, handshake *message.Handshake) (uuid.UUID
 		return empty, err
 	}
 	return id, nil
-}
-
-// TODO: too much duplicate code
-func (h *Hub) toActuator(tempUuid uuid.UUID, handshake *message.ActuatorHandshake) (uuid.UUID, error) {
-	realUuid, err := uuid.FromBytes(handshake.Uuid)
-	empty := *new(uuid.UUID)
-	if err != nil {
-		return empty, err
-	}
-	v, ok := h.visitor.Get(tempUuid)
-	if !ok {
-		return empty, errors.New("not found")
-	}
-	_, ok = h.Get(realUuid)
-	if ok {
-		return empty, errors.New("uuid already exists")
-	}
-	name := handshake.Name
-	h.actuator = h.actuator.Set(realUuid, v.ToActuator(realUuid, name))
-	h.visitor = h.visitor.Delete(tempUuid)
-	return realUuid, nil
-}
-
-func (h *Hub) toController(tempUuid uuid.UUID, handshake *message.ControllerHandshake) (uuid.UUID, error) {
-	realUuid, err := uuid.FromBytes(handshake.Uuid)
-	empty := *new(uuid.UUID)
-	if err != nil {
-		return empty, err
-	}
-	v, ok := h.visitor.Get(tempUuid)
-	if !ok {
-		return empty, errors.New("not found")
-	}
-	_, ok = h.Get(realUuid)
-	if ok {
-		return empty, errors.New("uuid already exists")
-	}
-	h.controller = h.controller.Set(realUuid, v.ToController(realUuid))
-	h.visitor = h.visitor.Delete(tempUuid)
-	return realUuid, nil
 }
 
 func (h *Hub) HandleStdPayload(ctx context.Context, payload *message.StdPayload) error {
@@ -241,73 +192,4 @@ func NewHub() Hub {
 		controller: immutable.NewMap[uuid.UUID, Controller](&hasher),
 		visitor:    immutable.NewMap[uuid.UUID, Visitor](&hasher),
 	}
-}
-
-type Controller struct {
-	uuid        uuid.UUID
-	conn        *websocket.Conn
-	subscribing []uuid.UUID
-}
-
-func (c Controller) Uuid() uuid.UUID {
-	return c.uuid
-}
-
-func (c Controller) Conn() *websocket.Conn {
-	return c.conn
-}
-
-func (c *Controller) Subscribe(id uuid.UUID) {
-	c.subscribing = append(c.subscribing, id)
-}
-
-func (c *Controller) Unsubscribe(id uuid.UUID) {
-	utils.DeleteIfOnce(
-		c.subscribing,
-		id,
-		func(a, b uuid.UUID) bool {
-			return a.ID() == b.ID()
-		})
-}
-
-func (c *Controller) Subscriptions() []uuid.UUID {
-	return c.subscribing
-}
-
-type Actuator struct {
-	name        string
-	uuid        uuid.UUID
-	conn        *websocket.Conn
-	subscribers []uuid.UUID
-}
-
-func (a Actuator) Name() string {
-	return a.name
-}
-
-func (a Actuator) Uuid() uuid.UUID {
-	return a.uuid
-}
-
-func (a Actuator) Conn() *websocket.Conn {
-	return a.conn
-}
-
-// same as `Controller.Subscribe`
-func (a *Actuator) AddSubscriber(id uuid.UUID) {
-	a.subscribers = append(a.subscribers, id)
-}
-
-// same as `Controller.Unsubscribe`
-func (a *Actuator) RemoveSubscriber(id uuid.UUID) {
-	utils.DeleteIfOnce(
-		a.subscribers,
-		id,
-		func(a, b uuid.UUID) bool {
-			return a.ID() == b.ID()
-		})
-}
-
-func (a *Actuator) Subscribers() []uuid.UUID {
-	return a.subscribers
 }
