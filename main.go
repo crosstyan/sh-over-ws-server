@@ -49,7 +49,7 @@ func main() {
 				m := string(buffer[:l])
 				m = strings.Trim(m, " \t")
 				if m != "" {
-					sugar.Warnw("MessageText", "content", m, "from", c.Request.RemoteAddr)
+					sugar.Infow("MessageText", "content", m, "from", c.Request.RemoteAddr)
 					// Echo. Nothing fancy.
 					_ = conn.Write(c, websocket.MessageText, []byte(m))
 				}

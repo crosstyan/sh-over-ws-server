@@ -5,8 +5,8 @@ import (
 
 	"github.com/benbjohnson/immutable"
 	"github.com/crosstyan/sh-over-ws/message"
+	"github.com/crosstyan/sh-over-ws/utils"
 	"github.com/google/uuid"
-	"golang.org/x/exp/slices"
 	"nhooyr.io/websocket"
 )
 
@@ -141,7 +141,7 @@ func (h *Hub) toController(tempUuid uuid.UUID, handshake *message.ControllerHand
 }
 
 func NewHub() Hub {
-	hasher := UuidHasher{}
+	hasher := utils.UuidHasher{}
 	return Hub{
 		actuator:   immutable.NewMap[uuid.UUID, Actuator](&hasher),
 		controller: immutable.NewMap[uuid.UUID, Controller](&hasher),
@@ -168,16 +168,12 @@ func (c Controller) Subscribe(id uuid.UUID) {
 }
 
 func (c Controller) Unsubscribe(id uuid.UUID) {
-	// a naive implementation
-	for i, v := range c.subscribing {
-		// I using `ID()` to hash anyway
-		// NOTE: bounds check?
-		// implement `DeleteIf` and `DeleteIfOnce`
-		if v.ID() == id.ID() {
-			c.subscribing = slices.Delete(c.subscribing, i, i)
-			break
-		}
-	}
+	utils.DeleteIfOnce(
+		c.subscribing,
+		id,
+		func(a, b uuid.UUID) bool {
+			return a.ID() == b.ID()
+		})
 }
 
 func (c Controller) Subscriptions() []uuid.UUID {
@@ -210,12 +206,12 @@ func (a Actuator) AddSubscriber(id uuid.UUID) {
 
 // same as `Controller.Unsubscribe`
 func (a Actuator) RemoveSubscriber(id uuid.UUID) {
-	for i, v := range a.subscribers {
-		if v.ID() == id.ID() {
-			a.subscribers = slices.Delete(a.subscribers, i, i)
-			break
-		}
-	}
+	utils.DeleteIfOnce(
+		a.subscribers,
+		id,
+		func(a, b uuid.UUID) bool {
+			return a.ID() == b.ID()
+		})
 }
 
 func (a Actuator) Subscribers() []uuid.UUID {
